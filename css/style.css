@@ -55,6 +55,9 @@ body {
   color: var(--ink);
   font-family: system-ui, -apple-system, "Segoe UI", "Malgun Gothic", "Apple SD Gothic Neo", sans-serif;
   line-height: 1.55;
+  overflow-x: hidden; /* 가로 스크롤 방지 */
+  word-break: keep-all;      /* 한글 단어 단위 줄바꿈 */
+  overflow-wrap: anywhere;   /* 긴 토큰(URL 등)도 강제 줄바꿈 */
 }
 
 .page {
@@ -160,6 +163,7 @@ h2 { font-size: 1.05rem; margin-bottom: 14px; }
   padding-top: 2px;
   text-align: right;
 }
+.timeline .body { min-width: 0; } /* grid 칸이 내용보다 넓어지는 것 방지 → 줄바꿈 */
 .timeline .dotcol { position: relative; }
 .timeline .dot {
   width: 10px; height: 10px;
@@ -326,6 +330,30 @@ input:focus, textarea:focus { outline: 2px solid var(--accent); border-color: tr
 .comments .when { color: var(--muted); font-size: 0.72rem; margin-left: 6px; }
 .comments .txt { margin-top: 2px; color: var(--ink-2); white-space: pre-wrap; }
 .comments .empty { color: var(--muted); border-top: none; }
+
+/* ============ 모바일 (휴대폰) ============ */
+@media (max-width: 480px) {
+  .page { padding: 12px 12px 40px; }
+  .card { padding: 16px 14px; }
+  .hero { padding: 20px 2px 14px; }
+  .hero h1 { font-size: 1.45rem; }
+  .hero-sub { font-size: 0.85rem; }
+  .stat-row { gap: 8px; }
+  .stat { padding: 12px; }
+  .stat .value { font-size: 1.15rem; }
+  .budget-total { font-size: 1.3rem; }
+
+  /* 이름/댓글 입력: 버튼을 아래로 내려 폭 확보 */
+  .name-form { flex-wrap: wrap; }
+  .name-form input { min-width: 0; }
+  .name-form .btn { flex: 1 0 100%; }
+  .comment-form { flex-direction: column; align-items: stretch; }
+  .comment-form .btn { width: 100%; }
+
+  /* 일정 시간 칸을 조금 좁혀 본문 공간 확보 */
+  .timeline li { grid-template-columns: 44px 12px 1fr; gap: 8px; }
+  .timeline .time { font-size: 0.75rem; }
+}
 
 /* ============ 푸터 ============ */
 .foot {

@@ -298,6 +298,8 @@
   renderBudget();
   renderChecklist();
   renderName();
+  renderPolls();          // Firebase 응답 전에도 먼저 그려두기
+  renderComments([]);
   store.onVotes((v) => { voteState = v; renderPolls(); });
   store.onComments(renderComments);
 })();
