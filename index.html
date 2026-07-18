@@ -22,12 +22,47 @@
     <!-- 요약 타일 -->
     <section class="stat-row" id="stat-row"></section>
 
+    <!-- 아직 안 정해진 것 -->
+    <section class="card open-card">
+      <h2>❓ 아직 안 정한 것</h2>
+      <ul class="open-list" id="open-questions"></ul>
+      <p class="hint">아래 "의견 남기기"에 자유롭게 적어주세요 👇</p>
+    </section>
+
+    <!-- 항공 -->
+    <section class="card">
+      <h2>✈️ 항공편</h2>
+      <div id="flight"></div>
+    </section>
+
     <!-- 일정 -->
     <section class="card">
-      <h2>📅 일정</h2>
+      <h2>📅 일정 (초안)</h2>
       <nav class="day-tabs" id="day-tabs"></nav>
       <p class="day-theme" id="day-theme"></p>
       <ol class="timeline" id="timeline"></ol>
+    </section>
+
+    <!-- 렌터카 -->
+    <section class="card">
+      <h2>🚗 렌터카 비교</h2>
+      <div class="car-grid" id="cars"></div>
+      <h3 class="sub-h">⚡ 제주 전기차 충전, 실제로 어떤가</h3>
+      <ul class="note-list" id="ev-notes"></ul>
+      <h3 class="sub-h">✅ 업체 고를 때</h3>
+      <ul class="note-list" id="rental-tips"></ul>
+    </section>
+
+    <!-- 숙소 -->
+    <section class="card">
+      <h2>🏠 숙소 후보 (방 3개)</h2>
+      <div id="stays"></div>
+    </section>
+
+    <!-- 맛집 -->
+    <section class="card">
+      <h2>🍖 맛집 리스트</h2>
+      <div id="foods"></div>
     </section>
 
     <div class="two-col">
@@ -40,33 +75,27 @@
 
       <!-- 준비물 -->
       <section class="card">
-        <h2>🎒 준비물 체크리스트</h2>
+        <h2>🎒 준비물</h2>
         <ul class="checklist" id="checklist"></ul>
         <p class="hint">체크 상태는 각자 브라우저에 저장돼요.</p>
       </section>
     </div>
 
-    <!-- 이름 입력 -->
+    <!-- 이름 -->
     <section class="card name-card">
       <h2>🙋 참여하기</h2>
-      <p class="hint">투표하고 의견을 남기려면 이름을 알려주세요.</p>
+      <p class="hint">의견을 남기려면 이름을 알려주세요.</p>
       <div class="name-form">
         <input type="text" id="user-name" placeholder="이름 또는 별명" maxlength="20" />
         <button id="save-name" class="btn primary">저장</button>
       </div>
     </section>
 
-    <!-- 투표 -->
-    <section class="card">
-      <h2>🗳️ 투표</h2>
-      <div id="polls"></div>
-    </section>
-
     <!-- 의견 -->
     <section class="card">
-      <h2>💬 의견 &amp; 제안</h2>
+      <h2>💬 의견 남기기</h2>
       <div class="comment-form">
-        <textarea id="comment-text" rows="2" placeholder="가고 싶은 곳, 바꾸고 싶은 일정 등 자유롭게!"></textarea>
+        <textarea id="comment-text" rows="2" placeholder="날짜, 차종, 숙소, 가고 싶은 곳 등 자유롭게!"></textarea>
         <button id="send-comment" class="btn primary">남기기</button>
       </div>
       <ul class="comments" id="comments"></ul>
@@ -77,7 +106,6 @@
     </footer>
   </div>
 
-  <!-- Firebase (설정돼 있을 때만 활성화) -->
   <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
 

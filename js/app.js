@@ -1,7 +1,7 @@
 // ============================================================
 // 여행 플래너 대시보드
 // - plan-data.js 의 TRIP_PLAN 을 화면에 렌더링
-// - 투표/댓글: Firebase 설정 시 실시간 공유, 아니면 로컬 모드
+// - 의견(댓글): Firebase 설정 시 실시간 공유, 아니면 로컬 모드
 // ============================================================
 
 (function () {
@@ -37,28 +37,8 @@
 
     store = {
       mode: "live",
-      onVotes(cb) {
-        base.collection("votes").onSnapshot((snap) => {
-          const votes = {};
-          snap.forEach((d) => (votes[d.id] = d.data()));
-          cb(votes); // { pollId: { optionId: [names] } }
-        });
-      },
-      async vote(pollId, optionId, name) {
-        const ref = base.collection("votes").doc(pollId);
-        await db.runTransaction(async (tx) => {
-          const doc = await tx.get(ref);
-          const data = doc.exists ? doc.data() : {};
-          // 한 사람은 질문당 한 표: 기존 표 제거 후 새 표
-          for (const k of Object.keys(data)) {
-            data[k] = (data[k] || []).filter((n) => n !== name);
-          }
-          data[optionId] = [...(data[optionId] || []), name];
-          tx.set(ref, data);
-        });
-      },
       onComments(cb) {
-        base.collection("comments").orderBy("ts", "desc").limit(50)
+        base.collection("comments").orderBy("ts", "desc").limit(100)
           .onSnapshot((snap) => {
             const list = [];
             snap.forEach((d) => list.push(d.data()));
@@ -72,25 +52,12 @@
   } else {
     // 로컬 모드: 이 브라우저에만 저장 (미리보기용)
     const KEY = "trip-" + P.id;
-    const load = () =>
-      JSON.parse(localStorage.getItem(KEY) || '{"votes":{},"comments":[]}');
+    const load = () => JSON.parse(localStorage.getItem(KEY) || '{"comments":[]}');
     const save = (d) => localStorage.setItem(KEY, JSON.stringify(d));
-    let voteCb = null, commentCb = null;
+    let commentCb = null;
 
     store = {
       mode: "local",
-      onVotes(cb) { voteCb = cb; cb(load().votes); },
-      async vote(pollId, optionId, name) {
-        const d = load();
-        const poll = d.votes[pollId] || {};
-        for (const k of Object.keys(poll)) {
-          poll[k] = (poll[k] || []).filter((n) => n !== name);
-        }
-        poll[optionId] = [...(poll[optionId] || []), name];
-        d.votes[pollId] = poll;
-        save(d);
-        if (voteCb) voteCb(d.votes);
-      },
       onComments(cb) { commentCb = cb; cb(load().comments); },
       async addComment(c) {
         const d = load();
@@ -101,17 +68,12 @@
     };
   }
 
-  // ---------- 헤더 & 요약 타일 ----------
-  function fmtDate(iso) {
-    const d = new Date(iso + "T00:00:00");
-    return `${d.getMonth() + 1}월 ${d.getDate()}일(${"일월화수목금토"[d.getDay()]})`;
-  }
-
+  // ---------- 헤더 & 요약 ----------
   function renderHeader() {
     document.title = P.title;
     $("trip-title").textContent = P.title;
     $("trip-sub").textContent =
-      `${P.destination} · ${fmtDate(P.startDate)} ~ ${fmtDate(P.endDate)} · ${P.members.join(", ")}`;
+      `${P.destination} · ${P.origin} 출발 · ${P.members.join(", ")}`;
 
     const badge = $("storage-badge");
     if (store.mode === "live") {
@@ -121,22 +83,29 @@
       badge.textContent = "로컬 모드 (미리보기)";
     }
 
-    const today = new Date(); today.setHours(0, 0, 0, 0);
-    const start = new Date(P.startDate + "T00:00:00");
-    const end = new Date(P.endDate + "T00:00:00");
-    const diff = Math.round((start - today) / 86400000);
-    const nights = Math.round((end - start) / 86400000);
-    let dday;
-    if (diff > 0) dday = "D-" + diff;
-    else if (today <= end) dday = "여행 중!";
-    else dday = "여행 끝";
-
     const total = P.budget.reduce((s, b) => s + b.amount, 0);
     $("stat-row").innerHTML = `
-      <div class="stat"><div class="label">출발까지</div><div class="value accent">${dday}</div></div>
-      <div class="stat"><div class="label">일정</div><div class="value">${nights}박 ${nights + 1}일</div></div>
+      <div class="stat"><div class="label">날짜</div><div class="value accent">${P.datesConfirmed ? "확정" : "미정"}</div></div>
+      <div class="stat"><div class="label">일정</div><div class="value">${P.nights}박 ${P.totalDays}일</div></div>
       <div class="stat"><div class="label">인원</div><div class="value">${P.members.length}명</div></div>
       <div class="stat"><div class="label">1인 예산</div><div class="value">${won(total)}</div></div>`;
+  }
+
+  // ---------- 아직 안 정한 것 ----------
+  function renderOpen() {
+    $("open-questions").innerHTML = P.openQuestions
+      .map((q) => `<li>${esc(q)}</li>`).join("");
+  }
+
+  // ---------- 항공편 ----------
+  function renderFlight() {
+    const f = P.flight;
+    $("flight").innerHTML = `
+      <div class="kv"><span class="k">노선</span><span class="v">${esc(f.route)}</span></div>
+      <div class="kv"><span class="k">소요</span><span class="v">${esc(f.duration)}</span></div>
+      <div class="kv"><span class="k">운항</span><span class="v">${esc(f.frequency)}</span></div>
+      <div class="kv"><span class="k">요금</span><span class="v">${esc(f.price)}</span></div>
+      <p class="hint">${esc(f.note)}</p>`;
   }
 
   // ---------- 일정 ----------
@@ -145,7 +114,7 @@
   function renderTabs() {
     $("day-tabs").innerHTML = P.days.map((d, i) =>
       `<button class="day-tab ${i === activeDay ? "active" : ""}" data-i="${i}">
-        Day ${i + 1}</button>`).join("");
+        ${esc(d.label)}</button>`).join("");
     $("day-tabs").querySelectorAll(".day-tab").forEach((b) =>
       b.addEventListener("click", () => {
         activeDay = Number(b.dataset.i);
@@ -155,7 +124,7 @@
 
   function renderDay() {
     const d = P.days[activeDay];
-    $("day-theme").textContent = `${fmtDate(d.date)} — ${d.theme}`;
+    $("day-theme").textContent = d.theme;
     $("timeline").innerHTML = d.events.map((e) => {
       const color = TYPE_COLORS[e.type] || "var(--muted)";
       return `<li>
@@ -167,6 +136,45 @@
         </div>
       </li>`;
     }).join("");
+  }
+
+  // ---------- 렌터카 ----------
+  function renderCars() {
+    $("cars").innerHTML = P.cars.map((c) => `
+      <div class="car ${c.status === "unknown" ? "unknown" : ""}">
+        <div class="car-name">${esc(c.name)}</div>
+        <div class="car-price">${esc(c.price)}</div>
+        <div class="car-extra">${esc(c.extra)}</div>
+        <div class="car-note">${esc(c.note)}</div>
+      </div>`).join("");
+    $("ev-notes").innerHTML = P.evNotes.map((n) => `<li>${esc(n)}</li>`).join("");
+    $("rental-tips").innerHTML = P.rentalTips.map((n) => `<li>${esc(n)}</li>`).join("");
+  }
+
+  // ---------- 숙소 ----------
+  function renderStays() {
+    $("stays").innerHTML = P.stays.map((s) => `
+      <div class="listing">
+        <div class="listing-head">
+          <span class="listing-name">${esc(s.name)}</span>
+          <span class="tag">${esc(s.area)}</span>
+        </div>
+        <div class="listing-sub">${esc(s.rooms)}</div>
+        <div class="listing-note">${esc(s.note)}</div>
+      </div>`).join("");
+  }
+
+  // ---------- 맛집 ----------
+  function renderFoods() {
+    $("foods").innerHTML = P.foods.map((f) => `
+      <div class="listing">
+        <div class="listing-head">
+          <span class="listing-name">${esc(f.name)}</span>
+          <span class="tag">${esc(f.cat)}</span>
+        </div>
+        <div class="listing-sub">${esc(f.area)}</div>
+        <div class="listing-note">${esc(f.note)}</div>
+      </div>`).join("");
   }
 
   // ---------- 예산 ----------
@@ -184,7 +192,7 @@
       </div>`).join("");
   }
 
-  // ---------- 체크리스트 (개인별 localStorage) ----------
+  // ---------- 준비물 ----------
   function renderChecklist() {
     const KEY = "trip-check-" + P.id;
     const checked = new Set(JSON.parse(localStorage.getItem(KEY) || "[]"));
@@ -213,7 +221,7 @@
     if (name) {
       $("user-name").value = name;
       card.insertAdjacentHTML("beforeend",
-        `<p class="greeting">안녕하세요, <b>${esc(name)}</b>님! 이제 투표할 수 있어요 👇</p>`);
+        `<p class="greeting">안녕하세요, <b>${esc(name)}</b>님! 의견을 남겨보세요 👇</p>`);
     }
   }
 
@@ -224,48 +232,7 @@
     renderName();
   });
 
-  // ---------- 투표 ----------
-  let voteState = {};
-
-  function renderPolls() {
-    const me = getName();
-    $("polls").innerHTML = P.polls.map((poll) => {
-      const votes = voteState[poll.id] || {};
-      const counts = poll.options.map((o) => (votes[o.id] || []).length);
-      const totalVotes = counts.reduce((a, b) => a + b, 0);
-      return `<div class="poll">
-        <p class="q">${esc(poll.question)}</p>
-        ${poll.options.map((o, i) => {
-          const voters = votes[o.id] || [];
-          const pct = totalVotes ? (counts[i] / totalVotes) * 100 : 0;
-          const mine = me && voters.includes(me);
-          return `<button class="poll-option ${mine ? "mine" : ""}"
-                    data-poll="${poll.id}" data-opt="${o.id}">
-            <span class="bar" style="transform:scaleX(${pct / 100})"></span>
-            <span class="inner">
-              <span>${esc(o.label)}
-                ${voters.length ? `<span class="voters">— ${esc(voters.join(", "))}</span>` : ""}
-              </span>
-              <span class="count">${counts[i]}표</span>
-            </span>
-          </button>`;
-        }).join("")}
-      </div>`;
-    }).join("");
-
-    $("polls").querySelectorAll(".poll-option").forEach((btn) =>
-      btn.addEventListener("click", () => {
-        const name = getName();
-        if (!name) {
-          alert("먼저 위에서 이름을 저장해주세요!");
-          $("user-name").focus();
-          return;
-        }
-        store.vote(btn.dataset.poll, btn.dataset.opt, name);
-      }));
-  }
-
-  // ---------- 댓글 ----------
+  // ---------- 의견 ----------
   function renderComments(list) {
     if (!list.length) {
       $("comments").innerHTML = `<li class="empty">아직 의견이 없어요. 첫 의견을 남겨보세요!</li>`;
@@ -293,13 +260,16 @@
 
   // ---------- 시작 ----------
   renderHeader();
+  renderOpen();
+  renderFlight();
   renderTabs();
   renderDay();
+  renderCars();
+  renderStays();
+  renderFoods();
   renderBudget();
   renderChecklist();
   renderName();
-  renderPolls();          // Firebase 응답 전에도 먼저 그려두기
   renderComments([]);
-  store.onVotes((v) => { voteState = v; renderPolls(); });
   store.onComments(renderComments);
 })();

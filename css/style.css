@@ -280,44 +280,100 @@ input:focus, textarea:focus { outline: 2px solid var(--accent); border-color: tr
 .name-card .greeting { font-size: 0.92rem; margin-top: 10px; }
 .name-card .greeting b { color: var(--accent); }
 
-/* ============ 투표 ============ */
-.poll { margin-bottom: 22px; }
-.poll:last-child { margin-bottom: 0; }
-.poll .q { font-weight: 600; font-size: 0.95rem; margin-bottom: 10px; }
-.poll-option {
-  display: block;
-  width: 100%;
-  text-align: left;
-  font: inherit;
-  background: transparent;
-  border: 1px solid var(--hairline);
-  border-radius: 10px;
-  padding: 10px 12px;
-  margin-bottom: 7px;
-  cursor: pointer;
-  color: var(--ink);
+/* ============ 아직 안 정한 것 ============ */
+.open-card { border-left: 3px solid var(--c3); }
+.open-list { list-style: none; }
+.open-list li {
+  font-size: 0.9rem;
+  padding: 6px 0 6px 20px;
   position: relative;
-  overflow: hidden;
+  border-bottom: 1px solid var(--hairline);
 }
-.poll-option:hover { border-color: var(--accent); }
-.poll-option.mine { border-color: var(--accent); outline: 1px solid var(--accent); }
-.poll-option .bar {
-  position: absolute;
-  inset: 0;
-  background: var(--accent-soft);
-  transform-origin: left;
-  z-index: 0;
+.open-list li:last-child { border-bottom: none; }
+.open-list li::before {
+  content: "?";
+  position: absolute; left: 0; top: 6px;
+  font-weight: 700;
+  color: var(--c3);
 }
-.poll-option .inner {
-  position: relative;
-  z-index: 1;
-  display: flex;
-  justify-content: space-between;
-  gap: 8px;
+
+/* ============ 키-값 (항공편) ============ */
+.kv {
+  display: grid;
+  grid-template-columns: 56px 1fr;
+  gap: 10px;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--hairline);
   font-size: 0.88rem;
 }
-.poll-option .voters { font-size: 0.75rem; color: var(--muted); }
-.poll-option .count { font-weight: 700; color: var(--accent); font-variant-numeric: tabular-nums; }
+.kv:last-of-type { border-bottom: none; }
+.kv .k { color: var(--muted); font-size: 0.82rem; }
+.kv .v { min-width: 0; }
+
+/* ============ 렌터카 ============ */
+.sub-h {
+  font-size: 0.88rem;
+  margin: 20px 0 8px;
+  color: var(--ink-2);
+}
+.car-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+}
+@media (max-width: 700px) {
+  .car-grid { grid-template-columns: 1fr; }
+}
+.car {
+  border: 1px solid var(--hairline);
+  border-radius: 10px;
+  padding: 12px;
+  min-width: 0;
+}
+.car.unknown { border-style: dashed; }
+.car-name { font-weight: 700; font-size: 0.92rem; }
+.car-price { color: var(--accent); font-weight: 700; font-size: 0.95rem; margin-top: 4px; }
+.car-extra { font-size: 0.78rem; color: var(--ink-2); margin-top: 2px; }
+.car-note { font-size: 0.78rem; color: var(--muted); margin-top: 6px; }
+
+.note-list { list-style: none; }
+.note-list li {
+  font-size: 0.85rem;
+  color: var(--ink-2);
+  padding: 5px 0 5px 16px;
+  position: relative;
+}
+.note-list li::before {
+  content: "·";
+  position: absolute; left: 4px;
+  color: var(--muted);
+  font-weight: 700;
+}
+
+/* ============ 목록 (숙소/맛집) ============ */
+.listing {
+  border-bottom: 1px solid var(--hairline);
+  padding: 12px 0;
+}
+.listing:last-child { border-bottom: none; }
+.listing:first-child { padding-top: 0; }
+.listing-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.listing-name { font-weight: 700; font-size: 0.95rem; }
+.tag {
+  font-size: 0.7rem;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 99px;
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+.listing-sub { font-size: 0.82rem; color: var(--ink-2); margin-top: 3px; }
+.listing-note { font-size: 0.82rem; color: var(--muted); margin-top: 3px; }
 
 /* ============ 댓글 ============ */
 .comments { list-style: none; margin-top: 16px; }
