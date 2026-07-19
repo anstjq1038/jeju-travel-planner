@@ -1,11 +1,14 @@
 import { useState } from "react";
-import { Link, Navigate, useParams } from "react-router-dom";
+import { Link, Navigate, useParams, useSearchParams } from "react-router-dom";
 import { AnimatePresence, motion } from "framer-motion";
 import { PLANS } from "../data/plans";
 import type { Plan, PlanDay } from "../types";
 import { TYPE_COLORS, dateText, ddayOf, fmtDate, won } from "../lib/util";
 import { Card, MapLink, StatusBadge, Tag } from "../components/ui";
 import { AuthCard, CommentsCard } from "../components/Comments";
+import { SettlementCard } from "../components/Settlement";
+import { DayMap } from "../components/DayMap";
+import { PhotosPane } from "../components/Photos";
 import { useComments } from "../hooks/useComments";
 
 const PANES = [
@@ -13,6 +16,7 @@ const PANES = [
   { key: "days", label: "일정", icon: "📅" },
   { key: "info", label: "정보", icon: "🔎" },
   { key: "prep", label: "준비", icon: "🎒" },
+  { key: "photos", label: "사진", icon: "📷" },
   { key: "talk", label: "의견", icon: "💬" },
 ] as const;
 type PaneKey = (typeof PANES)[number]["key"];
@@ -22,15 +26,20 @@ function paneAvailable(p: Plan, key: PaneKey): boolean {
     case "overview": return true;
     case "days": return !!p.days?.length;
     case "info": return !!(p.cars || p.stays || p.foods || p.links);
-    case "prep": return !!(p.budget || p.checklist);
+    case "prep": return !!(p.budget || p.checklist || p.members?.length);
+    case "photos": return !p.isSample;
     case "talk": return true;
   }
 }
 
 export default function Detail() {
   const { id } = useParams();
+  const [searchParams] = useSearchParams();
   const plan = PLANS.find((p) => p.id === id);
-  const [pane, setPane] = useState<PaneKey>("overview");
+  // ?pane=days 처럼 특정 탭을 바로 열 수 있음 (링크 공유용)
+  const initialPane = (PANES.some((x) => x.key === searchParams.get("pane"))
+    ? searchParams.get("pane") : "overview") as PaneKey;
+  const [pane, setPane] = useState<PaneKey>(initialPane);
   const [dir, setDir] = useState(1); // 전환 방향 (스와이프 모션용)
   const { comments } = useComments(plan?.id ?? "none");
 
@@ -90,6 +99,7 @@ export default function Detail() {
           {pane === "days" && <Days p={plan} />}
           {pane === "info" && <Info p={plan} />}
           {pane === "prep" && <Prep p={plan} />}
+          {pane === "photos" && <PhotosPane planId={plan.id} />}
           {pane === "talk" && (<><AuthCard /><CommentsCard planId={plan.id} /></>)}
         </motion.div>
       </AnimatePresence>
@@ -225,6 +235,7 @@ function Days({ p }: { p: Plan }) {
           );
         })}
       </ol>
+      <DayMap key={i} events={d.events} />
     </Card>
   );
 }
@@ -339,6 +350,7 @@ function Prep({ p }: { p: Plan }) {
           ))}
         </Card>
       )}
+      {!p.isSample && !!p.members?.length && <SettlementCard plan={p} />}
       {p.checklist && (
         <Card>
           <h2 className="mb-3 text-[1.05rem] font-bold">🎒 준비물</h2>

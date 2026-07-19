@@ -4,6 +4,26 @@ export interface PlanEvent {
   title: string;
   note?: string;
   map?: string; // 네이버 지도 검색어
+  geo?: [number, number]; // [위도, 경도] — 지도 핀용 (대략적 위치)
+}
+
+export interface Expense {
+  id: string;
+  title: string;
+  amount: number;
+  payer: string; // 멤버 이름
+  ts: number;
+  uid: string;
+  by?: string; // 기록한 사람 표시명
+}
+
+export interface Photo {
+  id: string;
+  data: string; // 압축된 JPEG dataURL
+  caption?: string;
+  name: string; // 올린 사람
+  uid: string;
+  ts: number;
 }
 
 export interface PlanDay {
