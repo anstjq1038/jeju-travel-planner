@@ -1,28 +1,53 @@
 // ============================================================
-// 여행 플래너 대시보드
-// - plan-data.js 의 TRIP_PLAN 을 화면에 렌더링
-// - 의견(댓글): Firebase 설정 시 실시간 공유, 아니면 로컬 모드
+// 계획 대시보드 — 홈(목록) + 상세, 해시 라우팅
+// 의견(댓글): Firebase 설정 시 실시간 공유, 아니면 로컬 모드
 // ============================================================
 
 (function () {
   "use strict";
 
-  const P = TRIP_PLAN;
   const TYPE_COLORS = {
-    "이동": "var(--c1)",
-    "식사": "var(--c3)",
-    "관광": "var(--c2)",
-    "액티비티": "var(--c5)",
-    "숙소": "var(--c4)",
-    "카페": "var(--c6)",
+    "이동": "var(--c1)", "식사": "var(--c3)", "관광": "var(--c2)",
+    "액티비티": "var(--c5)", "숙소": "var(--c4)", "카페": "var(--c6)",
   };
+  const STATUS_CLASS = {
+    "계획중": "s-plan", "예약중": "s-booking", "확정": "s-done", "완료": "s-past",
+  };
+
   const won = (n) => "₩" + n.toLocaleString("ko-KR");
   const $ = (id) => document.getElementById(id);
   const esc = (s) =>
     String(s).replace(/[&<>"']/g, (c) =>
       ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  const mapUrl = (q) => "https://map.naver.com/p/search/" + encodeURIComponent(q);
+  const show = (id, on) => { $(id).hidden = !on; };
 
-  // ---------- 저장소 (Firebase or localStorage) ----------
+  function fmtDate(iso) {
+    const d = new Date(iso + "T00:00:00");
+    return `${d.getMonth() + 1}월 ${d.getDate()}일(${"일월화수목금토"[d.getDay()]})`;
+  }
+
+  // 계획의 날짜 표현 (미정이면 dateLabel)
+  function dateText(p) {
+    if (!p.startDate) return p.dateLabel || "날짜 미정";
+    return p.endDate && p.endDate !== p.startDate
+      ? `${fmtDate(p.startDate)} ~ ${fmtDate(p.endDate)}`
+      : fmtDate(p.startDate);
+  }
+
+  // D-day (날짜 없으면 null)
+  function ddayOf(p) {
+    if (!p.startDate) return null;
+    const today = new Date(); today.setHours(0, 0, 0, 0);
+    const start = new Date(p.startDate + "T00:00:00");
+    const end = new Date((p.endDate || p.startDate) + "T00:00:00");
+    const diff = Math.round((start - today) / 86400000);
+    if (diff > 0) return "D-" + diff;
+    if (today <= end) return "진행 중!";
+    return "완료";
+  }
+
+  // ---------- 저장소 ----------
   const firebaseReady =
     typeof FIREBASE_CONFIG !== "undefined" &&
     FIREBASE_CONFIG.projectId &&
@@ -33,84 +58,159 @@
   if (firebaseReady) {
     firebase.initializeApp(FIREBASE_CONFIG);
     const db = firebase.firestore();
-    const base = db.collection("trips").doc(P.id);
+    // 경로는 기존과 동일하게 유지 (기존 댓글 보존)
+    const planDoc = (id) => db.collection("trips").doc(id);
 
     store = {
       mode: "live",
-      onComments(cb) {
-        base.collection("comments").orderBy("ts", "asc").limit(300)
+      onComments(planId, cb) {
+        return planDoc(planId).collection("comments").orderBy("ts", "asc").limit(300)
           .onSnapshot((snap) => {
             const list = [];
             snap.forEach((d) => list.push({ id: d.id, ...d.data() }));
             cb(list);
           });
       },
-      async addComment(c) {
-        await base.collection("comments").add(c);
+      async addComment(planId, c) {
+        await planDoc(planId).collection("comments").add(c);
       },
     };
   } else {
-    // 로컬 모드: 이 브라우저에만 저장 (미리보기용)
-    const KEY = "trip-" + P.id;
-    const load = () => JSON.parse(localStorage.getItem(KEY) || '{"comments":[]}');
-    const save = (d) => localStorage.setItem(KEY, JSON.stringify(d));
-    let commentCb = null;
+    const key = (id) => "trip-" + id;
+    const load = (id) => JSON.parse(localStorage.getItem(key(id)) || '{"comments":[]}');
+    const save = (id, d) => localStorage.setItem(key(id), JSON.stringify(d));
+    const cbs = {};
 
     store = {
       mode: "local",
-      onComments(cb) { commentCb = cb; cb(load().comments); },
-      async addComment(c) {
-        const d = load();
+      onComments(planId, cb) {
+        cbs[planId] = cb;
+        cb(load(planId).comments);
+        return () => { delete cbs[planId]; };
+      },
+      async addComment(planId, c) {
+        const d = load(planId);
         d.comments.push({ id: "local-" + Date.now(), ...c });
-        save(d);
-        if (commentCb) commentCb(d.comments);
+        save(planId, d);
+        if (cbs[planId]) cbs[planId](d.comments);
       },
     };
   }
 
-  // ---------- 헤더 & 요약 ----------
-  function fmtDate(iso) {
-    const d = new Date(iso + "T00:00:00");
-    return `${d.getMonth() + 1}월 ${d.getDate()}일(${"일월화수목금토"[d.getDay()]})`;
+  function setBadges() {
+    const txt = store.mode === "live" ? "실시간 공유 중" : "로컬 모드 (미리보기)";
+    ["storage-badge", "storage-badge-2"].forEach((id) => {
+      const el = $(id);
+      if (!el) return;
+      el.textContent = txt;
+      if (store.mode === "live") el.classList.add("live");
+    });
   }
 
-  function renderHeader() {
-    document.title = P.title;
-    $("trip-title").textContent = P.title;
-    $("trip-sub").textContent =
-      `${fmtDate(P.startDate)} ~ ${fmtDate(P.endDate)} · ${P.origin} 출발 · ${P.members.join(", ")}`;
+  // ══════════════════════════════════════════
+  // 홈 화면
+  // ══════════════════════════════════════════
+  let filter = "전체";
 
-    const badge = $("storage-badge");
-    if (store.mode === "live") {
-      badge.textContent = "실시간 공유 중";
-      badge.classList.add("live");
+  function renderHome() {
+    const upcoming = PLANS
+      .filter((p) => p.startDate && ddayOf(p) && ddayOf(p).startsWith("D-"))
+      .sort((a, b) => a.startDate.localeCompare(b.startDate))[0];
+    $("home-sub").textContent = upcoming
+      ? `총 ${PLANS.length}개 · 가장 가까운 일정은 "${upcoming.title}" (${ddayOf(upcoming)})`
+      : `총 ${PLANS.length}개의 계획`;
+
+    const types = ["전체", ...new Set(PLANS.map((p) => p.type))];
+    $("filter-tabs").innerHTML = types.map((t) =>
+      `<button class="day-tab ${t === filter ? "active" : ""}" data-t="${esc(t)}">
+        ${esc(t)}${t === "전체" ? ` (${PLANS.length})` : ` (${PLANS.filter((p) => p.type === t).length})`}
+      </button>`).join("");
+    $("filter-tabs").querySelectorAll("button").forEach((b) =>
+      b.addEventListener("click", () => { filter = b.dataset.t; renderHome(); }));
+
+    const list = filter === "전체" ? PLANS : PLANS.filter((p) => p.type === filter);
+    $("plan-grid").innerHTML = list.map((p) => {
+      const dd = ddayOf(p);
+      return `<a class="plan-card" href="#/p/${encodeURIComponent(p.id)}">
+        <div class="pc-top">
+          <span class="pc-emoji">${p.emoji || "🗓️"}</span>
+          <span class="status ${STATUS_CLASS[p.status] || ""}">${esc(p.status || "")}</span>
+        </div>
+        <div class="pc-title">${esc(p.title)}${p.isSample ? `<span class="tag sample-tag">예시</span>` : ""}</div>
+        <div class="pc-summary">${esc(p.summary || "")}</div>
+        <div class="pc-foot">
+          <span class="pc-date">${esc(dateText(p))}</span>
+          ${dd ? `<span class="pc-dday">${esc(dd)}</span>` : ""}
+        </div>
+        <div class="pc-members">${esc((p.members || []).join(", "))}</div>
+      </a>`;
+    }).join("") || `<p class="hint">해당 분류의 계획이 없어요.</p>`;
+  }
+
+  // ══════════════════════════════════════════
+  // 상세 화면
+  // ══════════════════════════════════════════
+  let activeDay = 0;
+  let unsubscribe = null;
+  let currentPlan = null;
+
+  function renderDetail(p) {
+    currentPlan = p;
+    activeDay = 0;
+
+    document.title = p.title;
+    $("trip-title").textContent = p.title;
+    $("detail-type").textContent = `${p.emoji || ""} ${p.type}`;
+    const bits = [dateText(p)];
+    if (p.members && p.members.length) bits.push(p.members.join(", "));
+    $("trip-sub").textContent = bits.join(" · ");
+
+    // 예시 안내
+    if (p.isSample) {
+      $("sample-note").hidden = false;
+      $("sample-note").innerHTML =
+        `이건 <b>구조를 보여드리는 예시</b>입니다. 실제 모임 내용을 알려주시면 채워드리고, 필요 없으면 지워달라고 하세요.`;
     } else {
-      badge.textContent = "로컬 모드 (미리보기)";
+      $("sample-note").hidden = true;
     }
 
-    const today = new Date(); today.setHours(0, 0, 0, 0);
-    const start = new Date(P.startDate + "T00:00:00");
-    const end = new Date(P.endDate + "T00:00:00");
-    const diff = Math.round((start - today) / 86400000);
-    let dday;
-    if (diff > 0) dday = "D-" + diff;
-    else if (today <= end) dday = "여행 중!";
-    else dday = "여행 끝";
+    renderStats(p);
+    renderDecided(p);
+    renderTodos(p);
+    renderInfo(p);
+    renderDays(p);
+    renderCars(p);
+    renderStays(p);
+    renderFoods(p);
+    renderBudget(p);
+    renderChecklist(p);
+    renderLinks(p);
 
-    const total = P.budget.reduce((s, b) => s + b.amount, 0);
-    $("stat-row").innerHTML = `
-      <div class="stat"><div class="label">출발까지</div><div class="value accent">${dday}</div></div>
-      <div class="stat"><div class="label">일정</div><div class="value">${P.nights}박 ${P.totalDays}일</div></div>
-      <div class="stat"><div class="label">인원</div><div class="value">${P.members.length}명</div></div>
-      <div class="stat"><div class="label">1인 예산</div><div class="value">${won(total)}</div></div>`;
+    // 의견
+    renderName();
+    renderComments([]);
+    if (unsubscribe) { unsubscribe(); unsubscribe = null; }
+    unsubscribe = store.onComments(p.id, renderComments);
   }
 
-  // 네이버 지도 검색 링크 (모바일에서 누르면 지도앱/웹으로 열림)
-  const mapUrl = (q) => "https://map.naver.com/p/search/" + encodeURIComponent(q);
+  function renderStats(p) {
+    const dd = ddayOf(p);
+    const tiles = [];
+    if (dd) tiles.push(`<div class="stat"><div class="label">출발까지</div><div class="value accent">${esc(dd)}</div></div>`);
+    else tiles.push(`<div class="stat"><div class="label">날짜</div><div class="value accent">미정</div></div>`);
+    if (p.nights) tiles.push(`<div class="stat"><div class="label">일정</div><div class="value">${p.nights}박 ${p.totalDays}일</div></div>`);
+    tiles.push(`<div class="stat"><div class="label">인원</div><div class="value">${(p.members || []).length}명</div></div>`);
+    if (p.budget) {
+      const total = p.budget.reduce((s, b) => s + b.amount, 0);
+      tiles.push(`<div class="stat"><div class="label">${esc(p.budgetLabel || "예산")}</div><div class="value">${won(total)}</div></div>`);
+    }
+    $("stat-row").innerHTML = tiles.join("");
+  }
 
-  // ---------- 확정 사항 ----------
-  function renderDecided() {
-    $("decided").innerHTML = P.decided.map((d) => `
+  function renderDecided(p) {
+    show("sec-decided", !!p.decided);
+    if (!p.decided) return;
+    $("decided").innerHTML = p.decided.map((d) => `
       <div class="decision">
         <div class="decision-head">
           <span class="decision-item">${esc(d.item)}</span>
@@ -120,53 +220,32 @@
       </div>`).join("");
   }
 
-  // ---------- 예약 할 일 ----------
-  function renderTodos() {
-    $("todos").innerHTML = P.todos.map((t) => `<li>${esc(t)}</li>`).join("");
+  function renderTodos(p) {
+    show("sec-todos", !!p.todos);
+    if (!p.todos) return;
+    $("todos").innerHTML = p.todos.map((t) => `<li>${esc(t)}</li>`).join("");
   }
 
-  // ---------- 링크 모음 ----------
-  function renderLinks() {
-    const groups = [...new Set(P.links.map((l) => l.group))];
-    $("links").innerHTML = groups.map((g) => `
-      <div class="link-group">
-        <h3 class="sub-h">${esc(g)}</h3>
-        ${P.links.filter((l) => l.group === g).map((l) => `
-          <a class="link-row" href="${esc(l.url)}" target="_blank" rel="noopener noreferrer">
-            <span class="link-label">${esc(l.label)}</span>
-            <span class="link-desc">${esc(l.desc)}</span>
-            <span class="link-arrow">↗</span>
-          </a>`).join("")}
-      </div>`).join("");
+  function renderInfo(p) {
+    show("sec-info", !!p.infoCard);
+    if (!p.infoCard) return;
+    const c = p.infoCard;
+    $("info-title").textContent = `${c.icon || "ℹ️"} ${c.title}`;
+    $("info-rows").innerHTML =
+      c.rows.map((r) => `<div class="kv"><span class="k">${esc(r.k)}</span><span class="v">${esc(r.v)}</span></div>`).join("") +
+      (c.note ? `<p class="hint">${esc(c.note)}</p>` : "");
   }
 
-  // ---------- 항공편 ----------
-  function renderFlight() {
-    const f = P.flight;
-    $("flight").innerHTML = `
-      <div class="kv"><span class="k">노선</span><span class="v">${esc(f.route)}</span></div>
-      <div class="kv"><span class="k">소요</span><span class="v">${esc(f.duration)}</span></div>
-      <div class="kv"><span class="k">운항</span><span class="v">${esc(f.frequency)}</span></div>
-      <div class="kv"><span class="k">요금</span><span class="v">${esc(f.price)}</span></div>
-      <p class="hint">${esc(f.note)}</p>`;
-  }
-
-  // ---------- 일정 ----------
-  let activeDay = 0;
-
-  function renderTabs() {
-    $("day-tabs").innerHTML = P.days.map((d, i) =>
-      `<button class="day-tab ${i === activeDay ? "active" : ""}" data-i="${i}">
-        ${esc(d.label)}</button>`).join("");
+  function renderDays(p) {
+    show("sec-days", !!(p.days && p.days.length));
+    if (!p.days || !p.days.length) return;
+    $("day-tabs").innerHTML = p.days.map((d, i) =>
+      `<button class="day-tab ${i === activeDay ? "active" : ""}" data-i="${i}">${esc(d.label)}</button>`).join("");
     $("day-tabs").querySelectorAll(".day-tab").forEach((b) =>
-      b.addEventListener("click", () => {
-        activeDay = Number(b.dataset.i);
-        renderTabs(); renderDay();
-      }));
-  }
+      b.addEventListener("click", () => { activeDay = Number(b.dataset.i); renderDays(p); }));
+    $("day-tabs").hidden = p.days.length < 2;
 
-  function renderDay() {
-    const d = P.days[activeDay];
+    const d = p.days[activeDay];
     $("day-theme").textContent = d.date ? `${fmtDate(d.date)} — ${d.theme}` : d.theme;
     $("timeline").innerHTML = d.events.map((e) => {
       const color = TYPE_COLORS[e.type] || "var(--muted)";
@@ -182,22 +261,26 @@
     }).join("");
   }
 
-  // ---------- 렌터카 ----------
-  function renderCars() {
-    $("cars").innerHTML = P.cars.map((c) => `
+  function renderCars(p) {
+    show("sec-cars", !!p.cars);
+    if (!p.cars) return;
+    $("cars").innerHTML = p.cars.map((c) => `
       <div class="car ${c.unknown ? "unknown" : ""} ${c.pick ? "pick" : ""}">
         <div class="car-name">${esc(c.name)}${c.pick ? `<span class="tag pick-tag">추천</span>` : ""}</div>
         <div class="car-price">${esc(c.price)}</div>
         <div class="car-extra">${esc(c.extra)}</div>
         <div class="car-note">${esc(c.note)}</div>
       </div>`).join("");
-    $("ev-notes").innerHTML = P.evNotes.map((n) => `<li>${esc(n)}</li>`).join("");
-    $("rental-tips").innerHTML = P.rentalTips.map((n) => `<li>${esc(n)}</li>`).join("");
+    show("ev-wrap", !!p.evNotes);
+    if (p.evNotes) $("ev-notes").innerHTML = p.evNotes.map((n) => `<li>${esc(n)}</li>`).join("");
+    show("tips-wrap", !!p.rentalTips);
+    if (p.rentalTips) $("rental-tips").innerHTML = p.rentalTips.map((n) => `<li>${esc(n)}</li>`).join("");
   }
 
-  // ---------- 숙소 ----------
-  function renderStays() {
-    $("stays").innerHTML = P.stays.map((s) => `
+  function renderStays(p) {
+    show("sec-stays", !!p.stays);
+    if (!p.stays) return;
+    $("stays").innerHTML = p.stays.map((s) => `
       <div class="listing ${s.pick ? "pick" : ""}">
         <div class="listing-head">
           <span class="listing-name">${esc(s.name)}</span>
@@ -210,9 +293,10 @@
       </div>`).join("");
   }
 
-  // ---------- 맛집 ----------
-  function renderFoods() {
-    $("foods").innerHTML = P.foods.map((f) => `
+  function renderFoods(p) {
+    show("sec-foods", !!p.foods);
+    if (!p.foods) return;
+    $("foods").innerHTML = p.foods.map((f) => `
       <div class="listing">
         <div class="listing-head">
           <span class="listing-name">${esc(f.name)}</span>
@@ -224,13 +308,15 @@
       </div>`).join("");
   }
 
-  // ---------- 예산 ----------
-  function renderBudget() {
-    const total = P.budget.reduce((s, b) => s + b.amount, 0);
-    const max = Math.max(...P.budget.map((b) => b.amount));
+  function renderBudget(p) {
+    show("sec-budget", !!p.budget);
+    if (!p.budget) return;
+    $("budget-title").textContent = `💰 ${p.budgetLabel || "예산"}`;
+    const total = p.budget.reduce((s, b) => s + b.amount, 0);
+    const max = Math.max(...p.budget.map((b) => b.amount));
     const colors = ["var(--c1)", "var(--c2)", "var(--c3)", "var(--c4)", "var(--c5)", "var(--c6)"];
-    $("budget-total").innerHTML = `${won(total)} <small>/ 1인 총액</small>`;
-    $("budget-bars").innerHTML = P.budget.map((b, i) => `
+    $("budget-total").innerHTML = `${won(total)} <small>/ ${esc(p.budgetLabel || "총액")}</small>`;
+    $("budget-bars").innerHTML = p.budget.map((b, i) => `
       <div class="budget-row">
         <div class="meta"><span>${esc(b.category)}</span><span class="amt">${won(b.amount)}</span></div>
         <div class="budget-track">
@@ -239,11 +325,12 @@
       </div>`).join("");
   }
 
-  // ---------- 준비물 ----------
-  function renderChecklist() {
-    const KEY = "trip-check-" + P.id;
+  function renderChecklist(p) {
+    show("sec-checklist", !!p.checklist);
+    if (!p.checklist) return;
+    const KEY = "trip-check-" + p.id;
     const checked = new Set(JSON.parse(localStorage.getItem(KEY) || "[]"));
-    $("checklist").innerHTML = P.checklist.map((item, i) => `
+    $("checklist").innerHTML = p.checklist.map((item, i) => `
       <li><label>
         <input type="checkbox" data-i="${i}" ${checked.has(i) ? "checked" : ""}/>
         <span>${esc(item)}</span>
@@ -254,6 +341,22 @@
         cb.checked ? checked.add(i) : checked.delete(i);
         localStorage.setItem(KEY, JSON.stringify([...checked]));
       }));
+  }
+
+  function renderLinks(p) {
+    show("sec-links", !!p.links);
+    if (!p.links) return;
+    const groups = [...new Set(p.links.map((l) => l.group))];
+    $("links").innerHTML = groups.map((g) => `
+      <div class="link-group">
+        <h3 class="sub-h">${esc(g)}</h3>
+        ${p.links.filter((l) => l.group === g).map((l) => `
+          <a class="link-row" href="${esc(l.url)}" target="_blank" rel="noopener noreferrer">
+            <span class="link-label">${esc(l.label)}</span>
+            <span class="link-desc">${esc(l.desc)}</span>
+            <span class="link-arrow">↗</span>
+          </a>`).join("")}
+      </div>`).join("");
   }
 
   // ---------- 이름 ----------
@@ -279,19 +382,16 @@
     renderName();
   });
 
-  // ---------- 의견 (대댓글 지원) ----------
-  let replyTo = null; // 답글 대상 {id, name}
+  // ---------- 의견 (대댓글) ----------
+  let replyTo = null;
 
-  function fmtWhen(ts) {
-    return ts ? new Date(ts).toLocaleString("ko-KR", {
-      month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit",
-    }) : "";
-  }
+  const fmtWhen = (ts) => ts ? new Date(ts).toLocaleString("ko-KR", {
+    month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit",
+  }) : "";
 
   function commentHTML(c, isReply, parentName) {
     const agent = c.agent ? `<span class="agent-badge">플래너</span>` : "";
-    const to = isReply && parentName
-      ? `<span class="reply-to">→ ${esc(parentName)}님께</span>` : "";
+    const to = isReply && parentName ? `<span class="reply-to">→ ${esc(parentName)}님께</span>` : "";
     return `<li class="${isReply ? "reply" : ""} ${c.agent ? "from-agent" : ""}">
       <div class="c-head">
         <span class="who">${esc(c.name)}</span>${agent}${to}
@@ -308,7 +408,6 @@
       box.innerHTML = `<li class="empty">아직 의견이 없어요. 첫 의견을 남겨보세요!</li>`;
       return;
     }
-    // 최신 글이 위로 오되, 답글은 부모 바로 아래에 시간순으로
     const roots = list.filter((c) => !c.replyTo).sort((a, b) => (b.ts || 0) - (a.ts || 0));
     const byParent = {};
     list.filter((c) => c.replyTo).forEach((c) => {
@@ -317,8 +416,7 @@
     Object.values(byParent).forEach((arr) => arr.sort((a, b) => (a.ts || 0) - (b.ts || 0)));
 
     box.innerHTML = roots.map((r) =>
-      commentHTML(r, false) +
-      (byParent[r.id] || []).map((x) => commentHTML(x, true, r.name)).join("")
+      commentHTML(r, false) + (byParent[r.id] || []).map((x) => commentHTML(x, true, r.name)).join("")
     ).join("");
 
     box.querySelectorAll(".reply-btn").forEach((b) =>
@@ -342,29 +440,38 @@
     const name = getName();
     const text = $("comment-text").value.trim();
     if (!name) { alert("먼저 위에서 이름을 저장해주세요!"); return; }
-    if (!text) return;
+    if (!text || !currentPlan) return;
     const c = { name, text, ts: Date.now() };
     if (replyTo) c.replyTo = replyTo.id;
-    await store.addComment(c);
+    await store.addComment(currentPlan.id, c);
     $("comment-text").value = "";
     replyTo = null;
     renderReplyBar();
   });
 
-  // ---------- 시작 ----------
-  renderHeader();
-  renderDecided();
-  renderTodos();
-  renderFlight();
-  renderTabs();
-  renderDay();
-  renderCars();
-  renderStays();
-  renderFoods();
-  renderBudget();
-  renderChecklist();
-  renderLinks();
-  renderName();
-  renderComments([]);
-  store.onComments(renderComments);
+  // ══════════════════════════════════════════
+  // 라우터
+  // ══════════════════════════════════════════
+  function route() {
+    const m = location.hash.match(/^#\/p\/(.+)$/);
+    const plan = m ? PLANS.find((p) => p.id === decodeURIComponent(m[1])) : null;
+
+    if (plan) {
+      show("view-home", false);
+      show("view-detail", true);
+      renderDetail(plan);
+    } else {
+      if (unsubscribe) { unsubscribe(); unsubscribe = null; }
+      currentPlan = null;
+      show("view-detail", false);
+      show("view-home", true);
+      document.title = "우리 계획";
+      renderHome();
+    }
+    window.scrollTo(0, 0);
+  }
+
+  window.addEventListener("hashchange", route);
+  setBadges();
+  route();
 })();
