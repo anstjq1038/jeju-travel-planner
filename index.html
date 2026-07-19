@@ -20,7 +20,17 @@
   <meta name="twitter:description" content="일정·예산·준비물 다 정리해뒀어요. 눌러서 의견 남겨주세요!" />
   <meta name="twitter:image" content="https://anstjq1038.github.io/jeju-travel-planner/og.png" />
 
-  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🗓️</text></svg>" />
+  <!-- PWA: 홈 화면에 추가하면 앱처럼 설치됩니다 -->
+  <link rel="manifest" href="manifest.webmanifest" />
+  <meta name="theme-color" content="#2a78d6" media="(prefers-color-scheme: light)" />
+  <meta name="theme-color" content="#1a1a19" media="(prefers-color-scheme: dark)" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+  <meta name="apple-mobile-web-app-title" content="우리 계획" />
+  <link rel="apple-touch-icon" href="icons/icon-180.png" />
+
+  <link rel="icon" href="icons/icon-192.png" type="image/png" />
   <link rel="stylesheet" href="css/style.css?v=20260719e" />
 </head>
 <body>
@@ -35,6 +45,11 @@
         <h1>우리 계획</h1>
         <p class="hero-sub" id="home-sub"></p>
       </header>
+
+      <div class="install-hint" id="install-hint" hidden>
+        <span>📲 <b>앱으로 설치할 수 있어요</b> — Android: 메뉴(⋮) → "홈 화면에 추가" · iPhone: 공유(⬆️) → "홈 화면에 추가"</span>
+        <button id="install-close" class="link-btn">닫기</button>
+      </div>
 
       <nav class="filter-tabs" id="filter-tabs"></nav>
       <div class="plan-grid" id="plan-grid"></div>
@@ -157,5 +172,26 @@
   <script src="js/plans.js?v=20260719e"></script>
   <script src="js/firebase-config.js?v=20260719e"></script>
   <script src="js/app.js?v=20260719e"></script>
+  <script>
+    // 서비스 워커 등록 (오프라인 지원 + 설치 가능 조건)
+    if ("serviceWorker" in navigator) {
+      navigator.serviceWorker.register("sw.js");
+    }
+
+    // 설치 안내: 브라우저로 열었고, 아직 닫지 않은 경우만 표시
+    (function () {
+      const standalone =
+        window.matchMedia("(display-mode: standalone)").matches ||
+        window.navigator.standalone === true;
+      const hint = document.getElementById("install-hint");
+      if (!standalone && !localStorage.getItem("install-hint-closed")) {
+        hint.hidden = false;
+      }
+      document.getElementById("install-close").addEventListener("click", () => {
+        hint.hidden = true;
+        localStorage.setItem("install-hint-closed", "1");
+      });
+    })();
+  </script>
 </body>
 </html>

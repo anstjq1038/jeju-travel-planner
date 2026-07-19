@@ -100,6 +100,22 @@ h2 { font-size: 1.05rem; margin-bottom: 14px; }
 .hero h1 { font-size: 1.7rem; letter-spacing: -0.02em; }
 .hero-sub { color: var(--ink-2); margin-top: 4px; font-size: 0.95rem; }
 
+/* ============ 앱 설치 안내 ============ */
+.install-hint {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  background: var(--accent-soft);
+  color: var(--ink-2);
+  border-radius: 12px;
+  padding: 12px 14px;
+  font-size: 0.83rem;
+  margin-bottom: 14px;
+}
+.install-hint b { color: var(--accent); }
+.install-hint .link-btn { white-space: nowrap; flex-shrink: 0; }
+
 /* ============ 홈: 계획 카드 목록 ============ */
 .filter-tabs {
   display: flex;
