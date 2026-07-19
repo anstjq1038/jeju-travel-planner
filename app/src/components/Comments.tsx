@@ -48,25 +48,30 @@ function CommentItem({ c, isReply, parentName, mine, onReply, onDelete }: {
   c: Comment; isReply?: boolean; parentName?: string; mine: boolean;
   onReply?: () => void; onDelete?: () => void;
 }) {
+  const avatar = c.photo
+    ? <img src={c.photo} referrerPolicy="no-referrer" alt="" className="h-8 w-8 shrink-0 rounded-full object-cover" />
+    : <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-sm font-bold text-white ${c.agent ? "bg-accent" : "bg-muted"}`}>
+        {c.agent ? "🤖" : (c.name || "?")[0]}
+      </span>;
   return (
     <motion.li
       layout initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, height: 0 }}
-      className={[
-        "border-t border-hairline py-2.5",
-        isReply ? "relative ml-4 border-t-0 border-l-2 border-l-hairline pl-3 before:absolute before:-left-3 before:top-2.5 before:text-xs before:text-muted before:content-['↳']" : "",
-        c.agent ? "rounded-r-xl bg-accent-soft/60 border-l-accent px-3" : "",
-      ].join(" ")}>
-      <div className="flex flex-wrap items-center gap-1.5 text-sm">
-        {c.photo && <img src={c.photo} referrerPolicy="no-referrer" alt="" className="h-5 w-5 rounded-full object-cover" />}
-        <span className="font-bold">{c.name}</span>
-        {c.agent && <span className="rounded-full bg-accent px-2 py-px text-[0.65rem] font-bold text-white">플래너</span>}
-        {isReply && parentName && <span className="text-xs font-semibold text-accent">→ {parentName}님께</span>}
-        <span className="ml-1 text-[0.72rem] text-muted">{fmtWhen(c.ts)}</span>
-      </div>
-      <div className="mt-0.5 whitespace-pre-wrap text-sm text-ink2">{c.text}</div>
-      <div className="mt-1.5 flex gap-1.5">
-        {onReply && <button onClick={onReply} className="rounded-full border border-hairline px-3.5 py-1 text-xs font-semibold text-muted active:scale-95 transition">답글</button>}
-        {mine && onDelete && <button onClick={onDelete} className="rounded-full border border-hairline px-3.5 py-1 text-xs font-semibold text-muted active:scale-95 transition hover:text-c6">삭제</button>}
+      className={`flex items-start gap-2.5 py-2 ${isReply ? "ml-9" : ""}`}>
+      {avatar}
+      <div className="min-w-0 flex-1">
+        <div className={`rounded-2xl rounded-tl-md px-3.5 py-2.5 ${c.agent ? "bg-accent-soft/70" : "bg-page"}`}>
+          <div className="flex flex-wrap items-center gap-1.5 text-[0.8rem]">
+            <span className="font-bold">{c.name}</span>
+            {c.agent && <span className="rounded-full bg-accent px-2 py-px text-[0.62rem] font-bold text-white">플래너</span>}
+            {isReply && parentName && <span className="text-[0.72rem] font-semibold text-accent">→ {parentName}님께</span>}
+            <span className="text-[0.68rem] text-muted">{fmtWhen(c.ts)}</span>
+          </div>
+          <div className="mt-1 whitespace-pre-wrap text-sm leading-relaxed text-ink2">{c.text}</div>
+        </div>
+        <div className="mt-1 flex gap-3 pl-1.5">
+          {onReply && <button onClick={onReply} className="text-xs font-semibold text-muted active:scale-95 transition">답글</button>}
+          {mine && onDelete && <button onClick={onDelete} className="text-xs font-semibold text-muted active:scale-95 transition">삭제</button>}
+        </div>
       </div>
     </motion.li>
   );

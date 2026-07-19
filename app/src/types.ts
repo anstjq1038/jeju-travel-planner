@@ -26,6 +26,33 @@ export interface Photo {
   ts: number;
 }
 
+export interface PhotoLike {
+  id: string; // `${photoId}_${uid}`
+  photoId: string;
+  uid: string;
+  name: string;
+  ts: number;
+}
+
+export interface PhotoComment {
+  id: string;
+  photoId: string;
+  uid: string;
+  name: string;
+  text: string;
+  ts: number;
+}
+
+// 여행 후 모임통장 사용내역을 Claude가 분석해 채우는 정산 리포트
+export interface Settlement {
+  updated: string; // 예: "2026-10-26 모임통장 내역 기준"
+  note?: string;
+  totalActual: number; // 실제 총 지출
+  perPerson?: number; // 1인 부담액
+  items: { category: string; budget: number; actual: number }[];
+  transfers?: { from: string; to: string; amount: number }[];
+}
+
 export interface PlanDay {
   label: string;
   date?: string | null;
@@ -55,7 +82,8 @@ export interface Plan {
   evNotes?: string[];
   rentalTips?: string[];
   stays?: { name: string; area: string; rooms: string; note: string; pick?: boolean }[];
-  foods?: { name: string; cat: string; area: string; note: string }[];
+  foods?: { name: string; cat: string; area: string; note: string; why?: string }[];
+  settlement?: Settlement;
   budgetLabel?: string;
   budget?: { category: string; amount: number }[];
   checklist?: string[];

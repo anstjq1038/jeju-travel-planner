@@ -41,6 +41,27 @@ service cloud.firestore {
       allow update: if false;
     }
 
+    // 사진 좋아요 — 문서 ID를 {photoId}_{uid}로 강제해 1인 1좋아요
+    match /trips/{tripId}/photoLikes/{likeId} {
+      allow read: if true;
+      allow create: if request.auth != null
+                    && request.resource.data.uid == request.auth.uid
+                    && likeId == request.resource.data.photoId + "_" + request.auth.uid;
+      allow delete: if request.auth != null
+                    && resource.data.uid == request.auth.uid;
+      allow update: if false;
+    }
+
+    // 사진 댓글
+    match /trips/{tripId}/photoComments/{doc} {
+      allow read: if true;
+      allow create: if request.auth != null
+                    && request.resource.data.uid == request.auth.uid;
+      allow delete: if request.auth != null
+                    && resource.data.uid == request.auth.uid;
+      allow update: if false;
+    }
+
     // 그 외 모든 경로는 차단
     match /{document=**} {
       allow read, write: if false;
