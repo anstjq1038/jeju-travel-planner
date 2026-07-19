@@ -2,12 +2,18 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // 의견(댓글)
-    // - 읽기/작성: 링크를 아는 사람 누구나
-    // - 삭제: 허용 (본인 댓글만 지우도록 화면에서 제한)
-    // - 수정: 금지 — 남의 글을 다른 내용으로 바꿔치기하는 것 방지
+    // 의견(댓글) — Google 로그인 필수
+    // - 읽기: 누구나 (링크 공유용)
+    // - 작성: 로그인한 본인 uid로만 + "플래너" 배지 사칭 금지
+    // - 삭제: 본인이 쓴 것만 (서버에서 강제)
+    // - 수정: 금지 (내용 변조 방지)
     match /trips/{tripId}/comments/{doc} {
-      allow read, create, delete: if true;
+      allow read: if true;
+      allow create: if request.auth != null
+                    && request.resource.data.uid == request.auth.uid
+                    && !("agent" in request.resource.data);
+      allow delete: if request.auth != null
+                    && resource.data.uid == request.auth.uid;
       allow update: if false;
     }
 

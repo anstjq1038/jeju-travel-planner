@@ -1,6 +1,6 @@
 // ============================================================
-// 계획 대시보드 — 홈(목록) + 상세, 해시 라우팅
-// 의견(댓글): Firebase 설정 시 실시간 공유, 아니면 로컬 모드
+// 계획 대시보드 — 홈(목록) + 상세(하단 탭), 해시 라우팅
+// 로그인: Firebase Auth(Google) — 본인 댓글만 삭제 가능
 // ============================================================
 
 (function () {
@@ -14,20 +14,27 @@
     "계획중": "s-plan", "예약중": "s-booking", "확정": "s-done", "완료": "s-past",
   };
 
+  // 상세 화면 하단 탭 구성 — 각 탭이 어떤 섹션을 보여주는지
+  const PANES = [
+    { key: "overview", label: "개요", icon: "📋", ids: ["stat-row", "sample-note", "sec-decided", "sec-todos", "sec-info"] },
+    { key: "days",     label: "일정", icon: "📅", ids: ["sec-days"] },
+    { key: "info",     label: "정보", icon: "🔎", ids: ["sec-cars", "sec-stays", "sec-foods", "sec-links"] },
+    { key: "prep",     label: "준비", icon: "🎒", ids: ["sec-budget", "sec-checklist"] },
+    { key: "talk",     label: "의견", icon: "💬", ids: ["sec-name", "sec-comments"] },
+  ];
+
   const won = (n) => "₩" + n.toLocaleString("ko-KR");
   const $ = (id) => document.getElementById(id);
   const esc = (s) =>
     String(s).replace(/[&<>"']/g, (c) =>
       ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
   const mapUrl = (q) => "https://map.naver.com/p/search/" + encodeURIComponent(q);
-  const show = (id, on) => { $(id).hidden = !on; };
 
   function fmtDate(iso) {
     const d = new Date(iso + "T00:00:00");
     return `${d.getMonth() + 1}월 ${d.getDate()}일(${"일월화수목금토"[d.getDay()]})`;
   }
 
-  // 계획의 날짜 표현 (미정이면 dateLabel)
   function dateText(p) {
     if (!p.startDate) return p.dateLabel || "날짜 미정";
     return p.endDate && p.endDate !== p.startDate
@@ -35,7 +42,6 @@
       : fmtDate(p.startDate);
   }
 
-  // D-day (날짜 없으면 null)
   function ddayOf(p) {
     if (!p.startDate) return null;
     const today = new Date(); today.setHours(0, 0, 0, 0);
@@ -47,18 +53,20 @@
     return "완료";
   }
 
-  // ---------- 저장소 ----------
+  // ---------- Firebase (저장소 + 로그인) ----------
   const firebaseReady =
     typeof FIREBASE_CONFIG !== "undefined" &&
     FIREBASE_CONFIG.projectId &&
     typeof firebase !== "undefined";
 
   let store;
+  let auth = null;
+  let currentUser = null;
 
   if (firebaseReady) {
     firebase.initializeApp(FIREBASE_CONFIG);
     const db = firebase.firestore();
-    // 경로는 기존과 동일하게 유지 (기존 댓글 보존)
+    auth = firebase.auth();
     const planDoc = (id) => db.collection("trips").doc(id);
 
     store = {
@@ -74,7 +82,6 @@
       async addComment(planId, c) {
         await planDoc(planId).collection("comments").add(c);
       },
-      // 원댓글을 지우면 달린 답글도 같이 삭제 (고아 답글 방지)
       async deleteComment(planId, id, replyIds) {
         const col = planDoc(planId).collection("comments");
         const batch = db.batch();
@@ -162,15 +169,54 @@
   }
 
   // ══════════════════════════════════════════
-  // 상세 화면
+  // 상세 화면 — 하단 탭
   // ══════════════════════════════════════════
   let activeDay = 0;
+  let activePane = "overview";
   let unsubscribe = null;
   let currentPlan = null;
+  let commentCount = 0;
+
+  // 섹션 표시 여부는 두 조건의 AND: (데이터 있음) && (현재 탭에 속함)
+  function show(id, has) {
+    const el = $(id);
+    if (el) el.dataset.has = has ? "1" : "0";
+  }
+
+  function applyPanes() {
+    const visible = {};
+    PANES.forEach((pane) => {
+      visible[pane.key] = pane.ids.some((id) => { const el = $(id); return el && el.dataset.has === "1"; });
+    });
+    // 현재 탭이 빈 탭이면 개요로
+    if (!visible[activePane]) activePane = "overview";
+
+    PANES.forEach((pane) => {
+      pane.ids.forEach((id) => {
+        const el = $(id);
+        if (el) el.hidden = !(el.dataset.has === "1" && pane.key === activePane);
+      });
+    });
+
+    $("bottom-nav").innerHTML = PANES.filter((p) => visible[p.key]).map((p) => `
+      <button class="nav-btn ${p.key === activePane ? "active" : ""}" data-pane="${p.key}">
+        <span class="nav-icon">${p.icon}${p.key === "talk" && commentCount ? `<span class="nav-badge">${commentCount > 99 ? "99+" : commentCount}</span>` : ""}</span>
+        <span class="nav-label">${p.label}</span>
+      </button>`).join("");
+    $("bottom-nav").querySelectorAll(".nav-btn").forEach((b) =>
+      b.addEventListener("click", () => {
+        if (activePane === b.dataset.pane) return;
+        activePane = b.dataset.pane;
+        applyPanes();
+        window.scrollTo({ top: 0 });
+      }));
+  }
 
   function renderDetail(p) {
     currentPlan = p;
     activeDay = 0;
+    activePane = "overview";
+    commentCount = 0;
 
     document.title = p.title;
     $("trip-title").textContent = p.title;
@@ -179,13 +225,10 @@
     if (p.members && p.members.length) bits.push(p.members.join(", "));
     $("trip-sub").textContent = bits.join(" · ");
 
-    // 예시 안내
+    show("sample-note", !!p.isSample);
     if (p.isSample) {
-      $("sample-note").hidden = false;
       $("sample-note").innerHTML =
         `이건 <b>구조를 보여드리는 예시</b>입니다. 실제 모임 내용을 알려주시면 채워드리고, 필요 없으면 지워달라고 하세요.`;
-    } else {
-      $("sample-note").hidden = true;
     }
 
     renderStats(p);
@@ -200,11 +243,14 @@
     renderChecklist(p);
     renderLinks(p);
 
-    // 의견
-    renderName();
+    show("sec-name", true);
+    show("sec-comments", true);
+    renderAuthCard();
     renderComments([]);
     if (unsubscribe) { unsubscribe(); unsubscribe = null; }
     unsubscribe = store.onComments(p.id, renderComments);
+
+    applyPanes();
   }
 
   function renderStats(p) {
@@ -219,6 +265,7 @@
       tiles.push(`<div class="stat"><div class="label">${esc(p.budgetLabel || "예산")}</div><div class="value">${won(total)}</div></div>`);
     }
     $("stat-row").innerHTML = tiles.join("");
+    show("stat-row", true);
   }
 
   function renderDecided(p) {
@@ -257,7 +304,7 @@
       `<button class="day-tab ${i === activeDay ? "active" : ""}" data-i="${i}">${esc(d.label)}</button>`).join("");
     $("day-tabs").querySelectorAll(".day-tab").forEach((b) =>
       b.addEventListener("click", () => { activeDay = Number(b.dataset.i); renderDays(p); }));
-    $("day-tabs").hidden = p.days.length < 2;
+    $("day-tabs").style.display = p.days.length < 2 ? "none" : "";
 
     const d = p.days[activeDay];
     $("day-theme").textContent = d.date ? `${fmtDate(d.date)} — ${d.theme}` : d.theme;
@@ -285,9 +332,9 @@
         <div class="car-extra">${esc(c.extra)}</div>
         <div class="car-note">${esc(c.note)}</div>
       </div>`).join("");
-    show("ev-wrap", !!p.evNotes);
+    $("ev-wrap").hidden = !p.evNotes;
     if (p.evNotes) $("ev-notes").innerHTML = p.evNotes.map((n) => `<li>${esc(n)}</li>`).join("");
-    show("tips-wrap", !!p.rentalTips);
+    $("tips-wrap").hidden = !p.rentalTips;
     if (p.rentalTips) $("rental-tips").innerHTML = p.rentalTips.map((n) => `<li>${esc(n)}</li>`).join("");
   }
 
@@ -373,32 +420,98 @@
       </div>`).join("");
   }
 
-  // ---------- 이름 ----------
+  // ══════════════════════════════════════════
+  // 로그인 (live: Google / local: 이름 입력)
+  // ══════════════════════════════════════════
   const NAME_KEY = "trip-username";
-  const getName = () => localStorage.getItem(NAME_KEY) || "";
+  const getLocalName = () => localStorage.getItem(NAME_KEY) || "";
 
-  function renderName() {
-    const name = getName();
-    const card = document.querySelector(".name-card");
-    const old = card.querySelector(".greeting");
-    if (old) old.remove();
-    if (name) {
-      $("user-name").value = name;
-      card.insertAdjacentHTML("beforeend",
-        `<p class="greeting">안녕하세요, <b>${esc(name)}</b>님! 의견을 남겨보세요 👇</p>`);
+  function renderAuthCard() {
+    const area = $("auth-area");
+
+    if (store.mode !== "live") {
+      // 로컬 미리보기: 기존 이름 방식
+      const name = getLocalName();
+      area.innerHTML = `
+        <p class="hint">의견을 남기려면 이름을 알려주세요. (로컬 모드)</p>
+        <div class="name-form">
+          <input type="text" id="user-name" placeholder="이름 또는 별명" maxlength="20" value="${esc(name)}" />
+          <button id="save-name" class="btn primary">저장</button>
+        </div>
+        ${name ? `<p class="greeting">안녕하세요, <b>${esc(name)}</b>님!</p>` : ""}`;
+      $("save-name").addEventListener("click", () => {
+        const v = $("user-name").value.trim();
+        if (!v) { alert("이름을 입력해주세요!"); return; }
+        localStorage.setItem(NAME_KEY, v);
+        renderAuthCard();
+        renderComments(lastComments);
+      });
+      return;
+    }
+
+    if (currentUser) {
+      const photo = currentUser.photoURL
+        ? `<img class="avatar" src="${esc(currentUser.photoURL)}" alt="" referrerpolicy="no-referrer" />`
+        : `<span class="avatar avatar-fallback">${esc((currentUser.displayName || "?")[0])}</span>`;
+      area.innerHTML = `
+        <div class="auth-row">
+          ${photo}
+          <div class="auth-info">
+            <div class="auth-name">${esc(currentUser.displayName || "이름 없음")}</div>
+            <div class="auth-mail">${esc(currentUser.email || "")}</div>
+          </div>
+          <button id="logout-btn" class="btn">로그아웃</button>
+        </div>
+        <p class="hint">본인이 쓴 의견만 삭제할 수 있어요.</p>`;
+      $("logout-btn").addEventListener("click", () => auth.signOut());
+    } else {
+      area.innerHTML = `
+        <p class="hint">의견을 남기려면 Google 계정으로 로그인해주세요. (누가 쓴 의견인지 확실해지고, 내 의견만 지울 수 있게 됩니다)</p>
+        <button id="login-btn" class="btn primary google-btn">
+          <svg width="16" height="16" viewBox="0 0 48 48"><path fill="#FFC107" d="M43.6 20.1H42V20H24v8h11.3C33.7 32.7 29.2 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.9 1.2 8 3l5.7-5.7C34.3 6.1 29.4 4 24 4 13 4 4 13 4 24s9 20 20 20 20-9 20-20c0-1.3-.1-2.6-.4-3.9z"/><path fill="#FF3D00" d="M6.3 14.7l6.6 4.8C14.7 15.1 19 12 24 12c3.1 0 5.9 1.2 8 3l5.7-5.7C34.3 6.1 29.4 4 24 4 16.3 4 9.7 8.3 6.3 14.7z"/><path fill="#4CAF50" d="M24 44c5.2 0 9.9-2 13.4-5.2l-6.2-5.2C29.2 35.1 26.7 36 24 36c-5.2 0-9.6-3.3-11.3-8l-6.5 5C9.6 39.6 16.3 44 24 44z"/><path fill="#1976D2" d="M43.6 20.1H42V20H24v8h11.3c-.8 2.2-2.2 4.2-4.1 5.6l6.2 5.2C36.9 39.2 44 34 44 24c0-1.3-.1-2.6-.4-3.9z"/></svg>
+          Google로 로그인
+        </button>`;
+      $("login-btn").addEventListener("click", async () => {
+        const provider = new firebase.auth.GoogleAuthProvider();
+        try {
+          await auth.signInWithPopup(provider);
+        } catch (e) {
+          if (e.code === "auth/popup-blocked" || e.code === "auth/popup-closed-by-user" ||
+              e.code === "auth/operation-not-supported-in-this-environment" || e.code === "auth/cancelled-popup-request") {
+            try { await auth.signInWithRedirect(provider); }
+            catch (e2) { alert("로그인에 실패했어요: " + e2.message); }
+          } else {
+            alert("로그인에 실패했어요: " + e.message);
+          }
+        }
+      });
     }
   }
 
-  $("save-name").addEventListener("click", () => {
-    const v = $("user-name").value.trim();
-    if (!v) { alert("이름을 입력해주세요!"); return; }
-    localStorage.setItem(NAME_KEY, v);
-    renderName();
-    renderComments(lastComments); // 내 댓글에 삭제 버튼 즉시 반영
-  });
+  if (auth) {
+    auth.onAuthStateChanged((u) => {
+      currentUser = u;
+      if (currentPlan) {
+        renderAuthCard();
+        renderComments(lastComments);
+      }
+    });
+  }
 
-  // ---------- 의견 (대댓글) ----------
+  // 지금 화면 기준 "내 이름/식별" 얻기
+  const myName = () =>
+    store.mode === "live" ? (currentUser && (currentUser.displayName || "이름 없음")) : getLocalName();
+
+  const isMine = (c) =>
+    store.mode === "live"
+      ? !!(currentUser && c.uid && c.uid === currentUser.uid)
+      : !c.agent && getLocalName() && c.name === getLocalName();
+
+  // ══════════════════════════════════════════
+  // 의견 (대댓글 + 삭제)
+  // ══════════════════════════════════════════
   let replyTo = null;
+  let lastComments = [];
 
   const fmtWhen = (ts) => ts ? new Date(ts).toLocaleString("ko-KR", {
     month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit",
@@ -407,25 +520,26 @@
   function commentHTML(c, isReply, parentName) {
     const agent = c.agent ? `<span class="agent-badge">플래너</span>` : "";
     const to = isReply && parentName ? `<span class="reply-to">→ ${esc(parentName)}님께</span>` : "";
-    // 내가 쓴 댓글에만 삭제 버튼 (로그인이 없으므로 이름 기준)
-    const mine = !c.agent && getName() && c.name === getName();
+    const photo = c.photo
+      ? `<img class="c-avatar" src="${esc(c.photo)}" alt="" referrerpolicy="no-referrer" />` : "";
     return `<li class="${isReply ? "reply" : ""} ${c.agent ? "from-agent" : ""}">
       <div class="c-head">
-        <span class="who">${esc(c.name)}</span>${agent}${to}
+        ${photo}<span class="who">${esc(c.name)}</span>${agent}${to}
         <span class="when">${fmtWhen(c.ts)}</span>
       </div>
       <div class="txt">${esc(c.text)}</div>
       <div class="c-actions">
         ${isReply ? "" : `<button class="reply-btn" data-id="${esc(c.id)}" data-name="${esc(c.name)}">답글</button>`}
-        ${mine ? `<button class="del-btn" data-id="${esc(c.id)}">삭제</button>` : ""}
+        ${isMine(c) ? `<button class="del-btn" data-id="${esc(c.id)}">삭제</button>` : ""}
       </div>
     </li>`;
   }
 
-  let lastComments = [];
-
   function renderComments(list) {
     lastComments = list;
+    commentCount = list.length;
+    if (currentPlan) applyPanes(); // 의견 탭 배지 갱신
+
     const box = $("comments");
     if (!list.length) {
       box.innerHTML = `<li class="empty">아직 의견이 없어요. 첫 의견을 남겨보세요!</li>`;
@@ -460,7 +574,6 @@
         b.disabled = true;
         try {
           await store.deleteComment(currentPlan.id, id, replies);
-          // 답글 달던 대상이 사라졌으면 답글 모드 해제
           if (replyTo && (replyTo.id === id || replies.includes(replyTo.id))) {
             replyTo = null; renderReplyBar();
           }
@@ -481,16 +594,33 @@
   }
 
   $("send-comment").addEventListener("click", async () => {
-    const name = getName();
     const text = $("comment-text").value.trim();
-    if (!name) { alert("먼저 위에서 이름을 저장해주세요!"); return; }
     if (!text || !currentPlan) return;
-    const c = { name, text, ts: Date.now() };
+
+    if (store.mode === "live" && !currentUser) {
+      alert("먼저 위에서 Google 로그인을 해주세요!");
+      return;
+    }
+    if (store.mode === "local" && !getLocalName()) {
+      alert("먼저 위에서 이름을 저장해주세요!");
+      return;
+    }
+
+    const c = { name: myName(), text, ts: Date.now() };
+    if (store.mode === "live") {
+      c.uid = currentUser.uid;
+      if (currentUser.photoURL) c.photo = currentUser.photoURL;
+    }
     if (replyTo) c.replyTo = replyTo.id;
-    await store.addComment(currentPlan.id, c);
-    $("comment-text").value = "";
-    replyTo = null;
-    renderReplyBar();
+
+    try {
+      await store.addComment(currentPlan.id, c);
+      $("comment-text").value = "";
+      replyTo = null;
+      renderReplyBar();
+    } catch (e) {
+      alert("등록에 실패했어요: " + e.message);
+    }
   });
 
   // ══════════════════════════════════════════
@@ -501,14 +631,14 @@
     const plan = m ? PLANS.find((p) => p.id === decodeURIComponent(m[1])) : null;
 
     if (plan) {
-      show("view-home", false);
-      show("view-detail", true);
+      $("view-home").hidden = true;
+      $("view-detail").hidden = false;
       renderDetail(plan);
     } else {
       if (unsubscribe) { unsubscribe(); unsubscribe = null; }
       currentPlan = null;
-      show("view-detail", false);
-      show("view-home", true);
+      $("view-detail").hidden = true;
+      $("view-home").hidden = false;
       document.title = "우리 계획";
       renderHome();
     }
